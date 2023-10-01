@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from "react";
+import { Amplify } from "aws-amplify";
+import { withAuthenticator } from "@aws-amplify/ui-react";
+import "@aws-amplify/ui-react/styles.css";
+import { I18n } from "aws-amplify";
+
+import axios from "axios";
+import appConfig from "./config";
 import "./App.css";
+import awsExports from "./aws-exports";
+import { dict } from "./dictionary";
 import robotIcon from "./robot.png";
-import dots from "./three-dots.svg"; // Adjust the path accordingly
+import dots from "./three-dots.svg";
+
+Amplify.configure(awsExports);
+
+I18n.setLanguage("ja");
+I18n.putVocabularies(dict);
 
 const App = () => {
   const [sidebarVisible, setSidebarVisible] = useState(false);
@@ -20,6 +34,8 @@ const App = () => {
     "あなたはプログラミングの先生です。生徒からの質問に答えてください",
   );
   const [input, setInput] = useState("");
+
+  const [isLoading, setIsLoading] = useState(false);
 
   const toggleSidebar = () => {
     setSidebarVisible(!sidebarVisible);
@@ -49,7 +65,7 @@ const App = () => {
     };
   }, [sidebarVisible]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     if (input.trim() === "") return; // Prevent empty messages
 
@@ -59,10 +75,40 @@ const App = () => {
       timestamp: new Date(),
     };
 
-    // Add the new message to the messages array
+    // Add the user's message to the messages array
     setMessages((prevMessages) => [...prevMessages, newMessage]);
 
-    setInput(""); // Clear the input
+    // Clear the input
+    setInput("");
+
+    // Set loading to true while waiting for the AI response
+    setIsLoading(true);
+
+    try {
+      // Call the AWS Lambda function through API Gateway
+      const response = await axios.post(
+        `${appConfig.apiGatewayInvokeUrl}main`,
+        {
+          message: input,
+          role: roleInput, // Send the role from the state as part of the request body
+        },
+      );
+
+      const aiMessage = {
+        sender: "AI",
+        content: response.data.message,
+        timestamp: new Date(),
+      };
+
+      // Add the AI's response to the messages array
+      setMessages((prevMessages) => [...prevMessages, aiMessage]);
+    } catch (error) {
+      console.error("Error calling the Lambda function:", error);
+      // Handle any errors here, e.g., show a notification or a message
+    }
+
+    // Set loading to false after getting the AI response
+    setIsLoading(false);
   };
 
   return (
@@ -151,7 +197,12 @@ const App = () => {
                 </div>
               </div>
             ))}
-          <img src={dots} alt="Dots" className="dots-icon" />
+          {isLoading && (
+            <div className="loading-container">
+              <img src={robotIcon} alt="AI Robot" className="robot-icon" />
+              <img src={dots} alt="Loading Dots" className="dots-icon" />
+            </div>
+          )}
         </div>
         <form onSubmit={handleSendMessage} className="chat-input">
           <input
@@ -167,4 +218,6 @@ const App = () => {
   );
 };
 
-export default App;
+export default withAuthenticator(App, {
+  hideSignUp: true,
+});

@@ -9,152 +9,13 @@ Description: >
 Parameters:
   DemoName:
     Type: String
-    Default: my-demo-chat
+    Default: gpt-bot
     MinLength: 3
     MaxLength: 50
+  SecretName:
+    Type: String
+    Description: Name of the secret in AWS Secrets Manager
 Resources:
-  #Auth
-  UserPool:
-    Type: "AWS::Cognito::UserPool"
-    Properties:
-      UserPoolName: !Sub ${DemoName}-user-pool
-      LambdaConfig:
-        PreSignUp: !GetAtt PreSignUpLambda.Arn
-        PostConfirmation: !GetAtt PostConfirmationLambda.Arn
-      AutoVerifiedAttributes:
-        - email
-      UsernameAttributes:
-        - email
-
-  PostConfirmationLambda:
-    Type: "AWS::Serverless::Function"
-    Properties:
-      Runtime: nodejs16.x
-      Timeout: 100
-      Handler: index.handler
-      CodeUri: handlers/postConfirmation
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref ApplicationTable
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ApplicationTable
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - logs:PutLogEvents
-                - logs:CreateLogGroup
-                - logs:CreateLogStream
-              Resource: arn:aws:logs:*:*:*
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - cognito-idp:AdminUpdateUserAttributes
-              Resource: "*"
-
-  PostConfirmationLambdaPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt PostConfirmationLambda.Arn
-      Action: lambda:InvokeFunction
-      Principal: cognito-idp.amazonaws.com
-      SourceAccount: !Ref "AWS::AccountId"
-      SourceArn: !GetAtt UserPool.Arn
-
-  # Creates a User Pool Client to be used by the identity pool
-  UserPoolClient:
-    Type: "AWS::Cognito::UserPoolClient"
-    Properties:
-      ClientName: !Sub ${DemoName}-client
-      GenerateSecret: false
-      UserPoolId: !Ref UserPool
-
-  #Creates a federated Identity pool
-  IdentityPool:
-    Type: "AWS::Cognito::IdentityPool"
-    Properties:
-      IdentityPoolName: !Sub ${DemoName}-IdentityPool
-      AllowUnauthenticatedIdentities: true
-      CognitoIdentityProviders:
-        - ClientId: !Ref UserPoolClient
-          ProviderName: !GetAtt UserPool.ProviderName
-  # Create a role for unauthorized access to AWS resources. Very limited access. Only allows users in the previously created Identity Pool
-  CognitoUnAuthorizedRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: "Allow"
-            Principal:
-              Federated: "cognito-identity.amazonaws.com"
-            Action:
-              - "sts:AssumeRoleWithWebIdentity"
-            Condition:
-              StringEquals:
-                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
-              "ForAnyValue:StringLike":
-                "cognito-identity.amazonaws.com:amr": unauthenticated
-      Policies:
-        - PolicyName: !Sub ${DemoName}-CognitoUnauthorizedPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: "Allow"
-                Action:
-                  - "mobileanalytics:PutEvents"
-                  - "cognito-sync:*"
-                Resource: "*"
-  # Create a role for authorized access to AWS resources. Control what your user can access.
-  # Allows users to access their s3 ChatBucket files
-  CognitoAuthorizedRole:
-    Type: "AWS::IAM::Role"
-    Description: The Role Cognito gives users.  Same as AuthLambdaUserRole that credential service gives to users except with cognito sub param
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: "Allow"
-            Principal:
-              Federated: "cognito-identity.amazonaws.com"
-            Action:
-              - "sts:AssumeRoleWithWebIdentity"
-            Condition:
-              StringEquals:
-                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
-              "ForAnyValue:StringLike":
-                "cognito-identity.amazonaws.com:amr": authenticated
-      Policies:
-        - PolicyName: !Sub ${DemoName}-CognitoAuthorizedPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: "Allow"
-                Action:
-                  - "mobileanalytics:PutEvents"
-                  - "cognito-sync:*"
-                  - "cognito-identity:*"
-                Resource: "*"
-
-  #Lambda Role
-  LambdaExecuteRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: auth-lambdarole
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action:
-              - sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-        Version: 2012-10-17
-      ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-
   #API GATEWAY
   ApiGatewayApi:
     Type: AWS::Serverless::Api
@@ -176,60 +37,18 @@ Resources:
         schemes:
           - https
         paths:
-          /list:
-            get:
-              summary: Return role
-              responses: {}
-              x-amazon-apigateway-integration:
-                type: aws_proxy
-                uri:
-                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${getRole.Arn}/invocations
-                httpMethod: POST
-                passthroughBehavior: when_no_templates
-          /send:
+          /main:
             post:
               summary: Send Message
               responses: {}
               x-amazon-apigateway-integration:
                 type: aws_proxy
                 uri:
-                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendMessages.Arn}/invocations
-                httpMethod: POST
-                passthroughBehavior: when_no_templates
-          /update:
-            post:
-              summary: Update Role
-              responses: {}
-              x-amazon-apigateway-integration:
-                type: aws_proxy
-                uri:
-                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateRole.Arn}/invocations
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${callOpenAI.Arn}/invocations
                 httpMethod: POST
                 passthroughBehavior: when_no_templates
 
-  getRole:
-    Type: "AWS::Serverless::Function"
-    Properties:
-      Runtime: nodejs16.x
-      Timeout: 100
-      Events:
-        ApiEvent:
-          Type: Api
-          Properties:
-            Path: /list
-            Method: GET
-            RestApiId:
-              Ref: ApiGatewayApi
-      Handler: index.handler
-      CodeUri: handlers/getRole
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref ApplicationTable
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref ApplicationTable
-
-  sendMessages:
+  callOpenAI:
     Type: "AWS::Serverless::Function"
     Properties:
       Runtime: nodejs16.x
@@ -243,57 +62,17 @@ Resources:
             RestApiId:
               Ref: ApiGatewayApi
       Handler: index.handler
-      CodeUri: handlers/editProfile
+      CodeUri: handler/main
       Environment:
         Variables:
-          TABLE_NAME: !Ref ApplicationTable
+          SECRET_NAME: !Ref SecretName
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ApplicationTable
-
-  updateRole:
-    Type: "AWS::Serverless::Function"
-    Properties:
-      Runtime: nodejs16.x
-      Timeout: 100
-      Events:
-        ApiEvent:
-          Type: Api
-          Properties:
-            Path: /update
-            Method: POST
-            RestApiId:
-              Ref: ApiGatewayApi
-      Handler: index.handler
-      CodeUri: handlers/updateRole
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref ApplicationTable
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ApplicationTable
-
-  #DynamoDB FOR API GATEWAY
-  ApplicationTable:
-    Type: "AWS::DynamoDB::Table"
-    Properties:
-      AttributeDefinitions:
-        - AttributeName: "userID"
-          AttributeType: "S"
-      KeySchema:
-        - AttributeName: "userID"
-          KeyType: "HASH"
-      ProvisionedThroughput:
-        ReadCapacityUnits: "2"
-        WriteCapacityUnits: "2"
+        Statement:
+          - Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}
 
 Outputs:
-  CognitoUserPoolId:
-    Value: !Ref UserPool
-  CognitoAppClientId:
-    Value: !Ref UserPoolClient
-  CognitoIdentityPoolId:
-    Value: !Ref IdentityPool
   WebEndpoint:
     Description: "API Gateway endpoint URL for Prod stage"
     Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

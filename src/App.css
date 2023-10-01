@@ -29,6 +29,20 @@
   font-size: 27px;
 }
 
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* Align left */
+  margin-top: 10px;
+}
+
+.dots-icon {
+  margin-left: 5px;
+  margin-top: 8px;
+  width: 50px; /* Adjust to your preferred size */
+  height: 25px; /* Adjust to your preferred size */
+}
+
 h2 {
   margin-bottom: 15px;
   font-size: 18px;
@@ -331,4 +345,8 @@ textarea {
     margin-right: 0.8rem;
     display: block;
   }
+}
+
+div[data-amplify-footer] {
+  display: none;
 }
