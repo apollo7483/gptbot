@@ -12,9 +12,15 @@ Parameters:
     Default: gpt-bot
     MinLength: 3
     MaxLength: 50
+  UserPoolArnParameter:
+    Type: String
+    Description: ARN of the Cognito User Pool
   SecretName:
     Type: String
     Description: Name of the secret in AWS Secrets Manager
+  SecretArn:
+    Type: String
+    Description: ARN of the secret in AWS Secrets Manager
 Resources:
   #API GATEWAY
   ApiGatewayApi:
@@ -22,7 +28,7 @@ Resources:
     Properties:
       StageName: Prod
       Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowMethods: "'POST,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
         MaxAge: "'600'"
@@ -30,7 +36,7 @@ Resources:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
-            UserPoolArn: !GetAtt UserPool.Arn
+            UserPoolArn: !Ref UserPoolArnParameter
         AddDefaultAuthorizerToCorsPreflight: false
       DefinitionBody:
         swagger: "2.0"
@@ -57,12 +63,12 @@ Resources:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /send
+            Path: /main
             Method: POST
             RestApiId:
               Ref: ApiGatewayApi
       Handler: index.handler
-      CodeUri: handler/main
+      CodeUri: handlers/main
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
@@ -70,8 +76,7 @@ Resources:
         Statement:
           - Effect: Allow
             Action: secretsmanager:GetSecretValue
-            Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}
-
+            Resource: !Ref SecretArn
 Outputs:
   WebEndpoint:
     Description: "API Gateway endpoint URL for Prod stage"

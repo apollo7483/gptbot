@@ -1,50 +1,75 @@
-const axios = require("axios");
 const AWS = require("aws-sdk");
+const OpenAI = require("openai");
 const secretsManager = new AWS.SecretsManager();
 
 exports.handler = async (event) => {
+    if (event.httpMethod === "OPTIONS") {
+        return {
+            statusCode: 200,
+            headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Authorization,Content-Type",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+            },
+            body: "",
+        };
+    }
+
     if (event.httpMethod !== "POST") {
         throw new Error(`Method not allowed`);
     }
 
-    // Parse the body of the request
     const body = JSON.parse(event.body);
-
-    // Extract the user role from the request body
     const userRole = body.role;
 
-    // Check the API Key from Secrets Manager
-    const apiKey = await getApiKeyFromSecretsManager(process.env.SECRET_NAME);
+    if (!userRole) {
+        throw new Error("Role is required");
+    }
 
-    // If the role is not specified, just use the message. Otherwise, append the role to the message.
-    const message = userRole
-        ? `${body.message} Role: ${userRole}`
-        : body.message;
+    const apiKey = await getApiKeyFromSecretsManager(process.env.SECRET_NAME);
+    const openai = new OpenAI({
+        apiKey: apiKey,
+    });
+
+    const messages = [
+        { role: "system", content: "短く簡潔に" },
+        { role: "system", content: userRole },
+        { role: "user", content: body.message },
+    ];
 
     let responseMessage;
 
     try {
-        const openAIResponse = await axios.post(
-            "https://api.openai.com/v2/engines/text-davinci-002/completions",
-            {
-                prompt: message,
-                max_tokens: 150,
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                    "Content-Type": "application/json",
-                },
-            },
-        );
-
-        responseMessage = openAIResponse.data.choices[0].text.trim();
+        const completion = await openai.chat.completions.create({
+            messages: messages,
+            model: "gpt-3.5-turbo",
+            max_tokens: 300,
+        });
+        responseMessage = completion.choices[0].message.content;
+        console.log(responseMessage);
     } catch (error) {
-        responseMessage = "Error while contacting OpenAI";
+        console.error("Error:", error.message); // Detailed error logged for diagnostic purposes
+
+        return {
+            statusCode: 500,
+            headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Authorization,Content-Type",
+                "Access-Control-Allow-Methods": "POST,OPTIONS",
+            },
+            body: JSON.stringify({
+                message: "An error occurred. Please try again later.",
+            }),
+        };
     }
 
     const response = {
         statusCode: 200,
+        headers: {
+            "Access-Control-Allow-Origin": "*", // This allows any origin
+            "Access-Control-Allow-Headers": "Authorization,Content-Type",
+            "Access-Control-Allow-Methods": "POST,OPTIONS", // Adding OPTIONS for preflight requests
+        },
         body: JSON.stringify({ message: responseMessage }),
     };
 
@@ -60,7 +85,7 @@ const getApiKeyFromSecretsManager = async (name) => {
             .promise();
 
         if ("SecretString" in secret) {
-            return JSON.parse(secret.SecretString).name;
+            return JSON.parse(secret.SecretString).key;
         }
     } catch (err) {
         console.error(err);

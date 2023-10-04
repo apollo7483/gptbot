@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Amplify } from "aws-amplify";
 import { withAuthenticator } from "@aws-amplify/ui-react";
+import { Auth } from "aws-amplify";
+
 import "@aws-amplify/ui-react/styles.css";
 import { I18n } from "aws-amplify";
 
@@ -11,6 +13,8 @@ import awsExports from "./aws-exports";
 import { dict } from "./dictionary";
 import robotIcon from "./robot.png";
 import dots from "./three-dots.svg";
+import sendIcon from "./send.png";
+import settingIcon from "./settings.png";
 
 Amplify.configure(awsExports);
 
@@ -18,24 +22,70 @@ I18n.setLanguage("ja");
 I18n.putVocabularies(dict);
 
 const App = () => {
+  const [token, setToken] = useState(null);
+
+  useEffect(() => {
+    const fetchToken = async () => {
+      try {
+        const session = await Auth.currentSession();
+        const jwtToken = session.getIdToken().getJwtToken();
+        setToken(jwtToken);
+      } catch (error) {
+        console.error("Error getting JWT token", error);
+      }
+    };
+
+    fetchToken();
+  }, []);
+
   const [sidebarVisible, setSidebarVisible] = useState(false);
+  const chatMessagesRef = useRef(null);
 
   const [messages, setMessages] = useState([
     {
       sender: "AI",
       content:
-        "こんにちは私はあなたあなたはプログラミングの先生です。生徒からの質問に答えてください",
+        "こんにちは私はプログラミングの先生です。気軽に質問してください。ロールは設定からいつでも変更できます。",
       timestamp: new Date(),
     },
   ]);
 
   const [nameInput, setNameInput] = useState("プログラミングの先生");
   const [roleInput, setRoleInput] = useState(
-    "あなたはプログラミングの先生です。生徒からの質問に答えてください",
+    "あなたはプログラミングの先生です。生徒からの質問に答えてください。",
   );
   const [input, setInput] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
+
+  const getLastMessageHeight = () => {
+    const chatMessagesEl = chatMessagesRef.current;
+    if (chatMessagesEl && chatMessagesEl.lastChild) {
+      return chatMessagesEl.lastChild.clientHeight;
+    }
+    return 0;
+  };
+
+  const OFFSET = 30;
+
+  const scrollToBottom = () => {
+    const chatMessagesEl = chatMessagesRef.current;
+    if (chatMessagesEl) {
+      const lastMessageHeight = getLastMessageHeight();
+      if (lastMessageHeight + OFFSET > chatMessagesEl.clientHeight) {
+        // Adjust scroll position to top of the last message with an added OFFSET
+        chatMessagesEl.scrollTop =
+          chatMessagesEl.scrollHeight - lastMessageHeight - OFFSET;
+      } else {
+        // Otherwise, scroll to the bottom as usual
+        chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+      }
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const toggleSidebar = () => {
     setSidebarVisible(!sidebarVisible);
@@ -55,6 +105,15 @@ const App = () => {
       !event.target.closest(".sidebar-toggle")
     ) {
       toggleSidebar();
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await Auth.signOut();
+      window.location.reload(); // to refresh the page after signing out
+    } catch (error) {
+      console.error("Error signing out:", error);
     }
   };
 
@@ -92,6 +151,11 @@ const App = () => {
           message: input,
           role: roleInput, // Send the role from the state as part of the request body
         },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
       );
 
       const aiMessage = {
@@ -105,6 +169,13 @@ const App = () => {
     } catch (error) {
       console.error("Error calling the Lambda function:", error);
       // Handle any errors here, e.g., show a notification or a message
+      const errorMessage = {
+        sender: "AI",
+        content: "エラーが起こりました。",
+        timestamp: new Date(),
+      };
+
+      setMessages((prevMessages) => [...prevMessages, errorMessage]);
     }
 
     // Set loading to false after getting the AI response
@@ -121,38 +192,37 @@ const App = () => {
         }`}
       >
         <div className="sidebar-content">
-          <h2 style={{ fontWeight: "bold" }}>ロール</h2>
-          <div style={{ marginBottom: "1em" }}>
-            <textarea
-              rows="1"
-              style={{
-                width: "100%",
-                padding: "0.5em",
-                fontSize: "1em",
-                marginBottom: "0.5em",
-              }}
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-            ></textarea>
-            <textarea
-              rows="6"
-              style={{
-                width: "100%",
-                padding: "0.5em",
-                fontSize: "1em",
-                marginBottom: "1em",
-              }}
-              value={roleInput}
-              onChange={(e) => setRoleInput(e.target.value)}
-            ></textarea>
-            <button
-              style={{
-                margin: 0,
-              }}
-              onClick={handleUpdateRole}
-            >
-              ロールを更新
-            </button>
+          <div style={{ padding: 10 }}>
+            <h2 style={{ fontWeight: "bold" }}>ロール</h2>
+            <div style={{ marginBottom: "1em" }}>
+              <textarea
+                rows="1"
+                style={{
+                  width: "100%",
+                  padding: "0.5em",
+                  fontSize: "1em",
+                  marginBottom: "0.5em",
+                }}
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+              ></textarea>
+              <textarea
+                rows="6"
+                style={{
+                  width: "100%",
+                  padding: "0.5em",
+                  fontSize: "1em",
+                  marginBottom: "1em",
+                }}
+                value={roleInput}
+                onChange={(e) => setRoleInput(e.target.value)}
+              ></textarea>
+              <div className="signout-container">
+                <button className="signout-button" onClick={handleSignOut}>
+                  サインアウト
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -164,11 +234,11 @@ const App = () => {
           {/* Moved sidebar-button to the right side of the top bar */}
           <div className="sidebar-button" style={{ marginLeft: "auto" }}>
             <button className="sidebar-toggle" onClick={toggleSidebar}>
-              <i className="fa fa-cog larger-icon" aria-hidden="true"></i>
+              <img src={settingIcon} alt="Send" className="settings-icon" />
             </button>
           </div>
         </div>
-        <div className="chat-messages">
+        <div className="chat-messages" ref={chatMessagesRef}>
           {messages.length > 0 &&
             messages.map((message, index) => (
               <div
@@ -204,20 +274,21 @@ const App = () => {
             </div>
           )}
         </div>
-        <form onSubmit={handleSendMessage} className="chat-input">
+        <form onSubmit={handleSendMessage} className="chat-form">
           <input
+            className="chat-input"
             type="text"
             placeholder="メッセージを入力してください"
             value={input}
             onChange={(e) => setInput(e.target.value)}
           />
-          <button type="submit">送信</button>
+          <button type="submit" className="send-icon-button">
+            <img src={sendIcon} alt="Send" className="send-icon" />
+          </button>
         </form>
       </div>
     </div>
   );
 };
 
-export default withAuthenticator(App, {
-  hideSignUp: true,
-});
+export default withAuthenticator(App);
