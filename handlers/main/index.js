@@ -32,7 +32,7 @@ exports.handler = async (event) => {
     });
 
     const messages = [
-        { role: "system", content: "短く簡潔に" },
+        { role: "system", content: "29秒以内に短く簡潔に答えてください。" },
         { role: "system", content: userRole },
         { role: "user", content: body.message },
     ];
