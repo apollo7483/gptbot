@@ -53,6 +53,13 @@ amplify add auth
 
 ## sam を使ったデプロイ
 
+メインのラムダ関数の npm パッケージのインストール
+
+```
+cd handlers/main
+npm install
+```
+
 サムを使って各種サービスをデプロイします。
 
 ```
