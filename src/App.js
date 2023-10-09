@@ -29,9 +29,32 @@ const App = () => {
       try {
         const session = await Auth.currentSession();
         const jwtToken = session.getIdToken().getJwtToken();
+
+        // Check if the token is expired
+        if (isTokenExpired(jwtToken)) {
+          console.log("Token is expired. Signing out...");
+          await Auth.signOut(); // Sign out if token is expired
+          return;
+        }
+
         setToken(jwtToken);
       } catch (error) {
         console.error("Error getting JWT token", error);
+      }
+    };
+
+    const isTokenExpired = (token) => {
+      try {
+        const base64Url = token.split(".")[1];
+        const base64 = base64Url.replace("-", "+").replace("_", "/");
+        const payload = JSON.parse(window.atob(base64));
+        const expirationTime = payload.exp * 1000; // convert to milliseconds
+        const currentTime = new Date().getTime();
+
+        return currentTime > expirationTime;
+      } catch (error) {
+        console.error("Error decoding token", error);
+        return false;
       }
     };
 
@@ -40,15 +63,9 @@ const App = () => {
 
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const chatMessagesRef = useRef(null);
+  const lastMessageRef = useRef(null);
 
-  const [messages, setMessages] = useState([
-    {
-      sender: "AI",
-      content:
-        "こんにちは私はプログラミングの先生です。気軽に質問してください。ロールは設定からいつでも変更できます。",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState([]);
 
   const [nameInput, setNameInput] = useState("プログラミングの先生");
   const [roleInput, setRoleInput] = useState(
@@ -66,35 +83,32 @@ const App = () => {
     return 0;
   };
 
-  const OFFSET = 30;
-
-  const scrollToBottom = () => {
-    const chatMessagesEl = chatMessagesRef.current;
-    if (chatMessagesEl) {
-      const lastMessageHeight = getLastMessageHeight();
-      if (lastMessageHeight + OFFSET > chatMessagesEl.clientHeight) {
-        // Adjust scroll position to top of the last message with an added OFFSET
-        chatMessagesEl.scrollTop =
-          chatMessagesEl.scrollHeight - lastMessageHeight - OFFSET;
-      } else {
-        // Otherwise, scroll to the bottom as usual
-        chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
-      }
+  useEffect(() => {
+    if (lastMessageRef.current) {
+      lastMessageRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  };
+  }, [messages]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    const timer = setTimeout(() => {
+      setMessages([
+        {
+          sender: "AI",
+          content:
+            "こんにちは私はプログラミングの先生です。気軽に質問してください。ロールは設定からいつでも変更できます。",
+          timestamp: new Date(),
+        },
+      ]);
+
+      // Scroll the entire page to the top
+      window.scrollTo(0, 0);
+    }, 500); // 500ms = 0.5 seconds
+
+    return () => clearTimeout(timer); // Clear the timeout if the component is unmounted before 0.5 seconds
+  }, []);
 
   const toggleSidebar = () => {
     setSidebarVisible(!sidebarVisible);
-  };
-
-  const handleUpdateRole = () => {
-    // Logic to update the role
-    console.log(`Updating role to: ${roleInput}`);
-    setRoleInput(""); // Clear input after update
   };
 
   const handleClickOutside = (event) => {
@@ -196,6 +210,7 @@ const App = () => {
             <h2 style={{ fontWeight: "bold" }}>ロール</h2>
             <div style={{ marginBottom: "1em" }}>
               <textarea
+                maxlength="20"
                 rows="1"
                 style={{
                   width: "100%",
@@ -207,6 +222,7 @@ const App = () => {
                 onChange={(e) => setNameInput(e.target.value)}
               ></textarea>
               <textarea
+                maxlength="100"
                 rows="6"
                 style={{
                   width: "100%",
@@ -227,7 +243,7 @@ const App = () => {
         </div>
       </div>
       <div className="chat">
-        <div className="chat-header">
+        <div className="chat-header sticky-top">
           <div className="chat-header-title">
             <h2 style={{ fontWeight: "bold" }}>{nameInput}</h2>
           </div>
@@ -243,6 +259,11 @@ const App = () => {
             messages.map((message, index) => (
               <div
                 key={index}
+                ref={
+                  index === messages.length - 1 && messages.length !== 1
+                    ? lastMessageRef
+                    : null
+                }
                 className={`message ${
                   message.sender !== "AI" ? "current" : ""
                 }`}
@@ -261,9 +282,7 @@ const App = () => {
                     message.sender !== "AI" ? "current" : ""
                   }`}
                 >
-                  <div className="message-content">
-                    <div className="content">{message.content}</div>
-                  </div>
+                  <div className="message-content">{message.content}</div>
                 </div>
               </div>
             ))}
@@ -274,8 +293,9 @@ const App = () => {
             </div>
           )}
         </div>
-        <form onSubmit={handleSendMessage} className="chat-form">
+        <form onSubmit={handleSendMessage} className="chat-form sticky-bottom">
           <input
+            maxlength="2000"
             className="chat-input"
             type="text"
             placeholder="メッセージを入力してください"

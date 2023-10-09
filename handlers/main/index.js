@@ -2,6 +2,9 @@ const AWS = require("aws-sdk");
 const OpenAI = require("openai");
 const secretsManager = new AWS.SecretsManager();
 
+const MAX_ROLE_LENGTH = 200;
+const MAX_MESSAGE_LENGTH = 2000;
+
 exports.handler = async (event) => {
     if (event.httpMethod === "OPTIONS") {
         return {
@@ -21,9 +24,18 @@ exports.handler = async (event) => {
 
     const body = JSON.parse(event.body);
     const userRole = body.role;
+    const userMessage = body.message;
 
     if (!userRole) {
         throw new Error("Role is required");
+    }
+
+    if (userRole.length > MAX_ROLE_LENGTH) {
+        throw new Error("Role exceeds maximum length");
+    }
+
+    if (!userMessage || userMessage.length > MAX_MESSAGE_LENGTH) {
+        throw new Error("Message is either missing or exceeds maximum length");
     }
 
     const apiKey = await getApiKeyFromSecretsManager(process.env.SECRET_NAME);
@@ -32,7 +44,7 @@ exports.handler = async (event) => {
     });
 
     const messages = [
-        { role: "system", content: "29秒以内に短く簡潔に答えてください。" },
+        { role: "system", content: "28秒以内に短く簡潔に答えてください。" },
         { role: "system", content: userRole },
         { role: "user", content: body.message },
     ];
