@@ -8,18 +8,21 @@
 
 ![Alt text for the image](GPTGRAM.drawio.png)
 
-認証には Cognito と Amplify つかい、APIgateway の Authorizer をパスしたのちに、メインのラムダ関数を呼び出すことができます。呼び出した関数は Secrets Manager から OPENAI API のアクセスキーを取得し、OPENAI の API を呼び出します。モデルは gpt-3.5-turbo を使用しています。
+認証には Cognito をつかい、APIgateway の Authorizer をパスしたのちに、ラムダ関数を呼び出すことができます。呼び出した関数は Secrets Manager から OPENAI API のアクセスキーを取得し、OPENAI の API を呼び出します。モデルは gpt-3.5-turbo を使用しています。
 フロントエンドには React を使用し S3 から CloudFront を経てアクセスします。
 
-**注意点**　ゲートウェイのタイムアウトが 29 秒のため、回答が長引くとタイムアウトエラーが発生します。今回のプロジェクトでは、短く簡潔に答えてください、とプロンプトを入れているので、ほとんどの場合 29 秒を切りますが、タイムアウトを考慮する場合は WEBSOCKET か ECS などにサービスを移す必要があります。
+[コンテナを利用した例](https://github.com/apollo7483/next-gpt)
 
-[Dokcer と NextJS NESTJS を使うヴァージョン](https://github.com/apollo7483/next-gpt)
+# カスタマイズ性
+
+自分のファインチューニングしたモデルを公開できます。また会話の内容で覚えてほしい箇所を指定したりもできます
+。
 
 ## 必要なツールとライブラリのインストール
 
 以下のツールとライブラリが必要です：
 
--   Amplify CLI
+-   Amplify CLI 　(使わない場合は事前に作成してある Cognito の PoolID などを Amplify.configure に渡せば使えます。)
 -   AWS SAM CLI
 
 具体的なインストール手順やバージョンについては、各ツールの公式ドキュメントを参照してください。
